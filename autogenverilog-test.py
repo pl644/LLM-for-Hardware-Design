@@ -31,33 +31,30 @@ user_proxy = autogen.UserProxyAgent(
     code_execution_config={"use_docker": False}
 )
 
-architect = autogen.AssistantAgent(
-    name="Architect",
-    system_message="You are an expert in Verilog architecture design. Provide efficient and modular designs. "
-                   "Explain your design choices clearly with comments when necessary.",
-    llm_config=llm_config,
-    code_execution_config={"use_docker": False}
-)
-
 coder = autogen.AssistantAgent(
-    name="Coder",
-    system_message="You are a Verilog coding expert. Write clean, efficient, and well-commented Verilog code. "
-                   "Provide explanations where needed, but do not exclude the Verilog implementation.",
+    name="Verilog_Coder",
+    system_message="You are an expert Verilog coder. Your goal is to:"
+    "- Carefully translate user specifications into a precise, synthesizable Verilog module"
+    "- Ensure the code exactly matches the provided requirements"
+    "- Write clean, well-commented, and efficient code"
+    "- Prioritize clarity and correctness over unnecessary complexity",
     llm_config=llm_config,
     code_execution_config={"use_docker": False}
 )
 
 critic = autogen.AssistantAgent(
-    name="Critic",
-    system_message="You are responsible for reviewing Verilog code for syntax correctness, logical consistency, "
-                   "and efficiency improvements. Provide constructive feedback while preserving the original code.",
+    name="Verilog_Critic",
+    system_message="You are a meticulous Verilog code reviewer. Your responsibilities include:"
+    "- Thoroughly validate the code against the original specification"
+    "- Identify any discrepancies between implementation and requirements"
+    "- Provide precise, actionable feedback",
     llm_config=llm_config,
     code_execution_config={"use_docker": False}
 )
 
 # 3. Create GroupChat & Manager
 groupchat = autogen.GroupChat(
-    agents=[user_proxy, architect, coder, critic],
+    agents=[user_proxy, coder, critic],
     messages=[],
     max_round=12
 )
@@ -158,102 +155,119 @@ def evaluate_test_results(test_results):
 # Main Automated Design Process
 # -------------------------------
 def orchestrate_design_flow(user_request, test_filename, ref_filename=None):
-    """Full design process based on the user request, using external test files."""
+    """Flexible design process with adaptive implementation."""
     conversation_log = []
     print("\n🚀 Starting Verilog design process...")
 
-    # Step 1: Architect generates initial design
-    print("\n📝 Asking Architect for initial design...")
-    architect_response = chat_with_agent(
-        architect,
-        f"Please provide a Verilog design based on the following user request:\n\n{user_request}\n\n"
-        "Include key functionalities, design considerations, and modular implementation where applicable."
+    # Direct to Coder: Generate initial implementation
+    print("\n🖥 Generating initial Verilog implementation...")
+    coder_response = chat_with_agent(
+        coder,
+        f"Implement a Verilog module based on the following detailed specification:\n\n{user_request}\n\n"
+        "Guidelines for implementation:"
+        "- Carefully analyze the entire specification"
+        "- Create a module that precisely matches all requirements"
+        "- Use appropriate Verilog constructs based on the module type"
+        "- Write clear, well-commented, and efficient code"
+        "- Ensure the implementation is synthesizable and follows best practices"
     )
-    conversation_log.append(f"=== Architect's Design ===\n{architect_response}\n")
-    print("✅ Architect provided an initial design.\n")
+    conversation_log.append(f"=== Initial Coder Implementation ===\n{coder_response}\n")
 
-    # Step 2: Iterative refinement for design between Critic & Coder
-    coder_response = architect_response
-    for i in range(3):
-        print(f"\n🔍 Critic reviewing design (Iteration {i+1})...")
-        critic_response = chat_with_agent(
-            critic,
-            f"Here is the Verilog code written so far:\n\n{coder_response}\n\n"
-            "Check for syntax errors, logical issues, and suggest improvements while keeping the original structure."
-        )
-        conversation_log.append(f"=== Critic Feedback (Iteration {i+1}) ===\n{critic_response}\n")
-        print(f"✅ Critic reviewed design (Iteration {i+1}).\n")
+    # Critic Review
+    print("\n🔍 Comprehensive Code Review...")
+    critic_response = chat_with_agent(
+        critic,
+        f"Thoroughly review this Verilog implementation against the original specification:\n\n{user_request}\n\n"
+        f"Code to review:\n\n{coder_response}\n\n"
+        "Review Criteria:"
+        "- Verify complete alignment with specification"
+        "- Check for any logical inconsistencies"
+        "- Provide specific, actionable feedback"
+    )
+    conversation_log.append(f"=== Critic Detailed Review ===\n{critic_response}\n")
 
-        print(f"\n🛠 Refining Verilog code (Iteration {i+1})...")
-        coder_response = chat_with_agent(
-            coder,
-            f"Here is the latest Verilog code:\n\n{coder_response}\n\n"
-            f"Here is the feedback from the previous review:\n\n{critic_response}\n\n"
-            "Please refine the Verilog code based on the feedback while keeping the original structure intact."
-        )
-        conversation_log.append(f"=== Coder (Version {i+1}) ===\n{coder_response}\n")
-        print(f"✅ Coder updated design (Version {i+1}).\n")
-
+    # Refinement with Maximum 2 Iterations
+    for iteration in range(2):
+        # Check if further refinement is needed
         if "No issues found" in critic_response or "Looks good" in critic_response:
-            print("🎉 Design finalized!\n")
             break
 
-    # Save the current design to TopModule.v
-    print("\n💾 Saving Verilog file...")
+        print(f"\n🛠 Refining Verilog Code (Iteration {iteration+1})...")
+        coder_response = chat_with_agent(
+            coder,
+            f"Refine the Verilog code based on the following specification and critic feedback:\n\n"
+            f"Original Specification:\n{user_request}\n\n"
+            f"Previous Implementation:\n{coder_response}\n\n"
+            f"Critic Feedback:\n{critic_response}\n\n"
+            "Refinement Instructions:"
+            "- Address each point in the critic's feedback"
+            "- Make improvements if necessary"
+        )
+        conversation_log.append(f"=== Refined Code (Iteration {iteration+1}) ===\n{coder_response}\n")
+
+        # Re-validate against specification
+        critic_response = chat_with_agent(
+            critic,
+            f"Verify this Verilog implementation exactly matches the original specification:\n\n{user_request}\n\n"
+            f"Code to verify:\n\n{coder_response}\n\n"
+            "Verification Process:"
+            "- Perform a comprehensive review"
+            "- Check against each requirement in the original specification"
+            "- Identify any remaining discrepancies or potential improvements"
+        )
+        conversation_log.append(f"=== Verification Review (Iteration {iteration+1}) ===\n{critic_response}\n")
+
+    # Test the implementation
     with open("TopModule.v", "w", encoding="utf-8") as f:
         f.write(coder_response)
 
-    # Run the SystemVerilog tests
-    print(f"\n🧪 Running tests with test file: {test_filename}")
     test_results = run_systemverilog_tests(test_filename, ref_filename)
     conversation_log.append(f"=== SystemVerilog Test Results ===\n{test_results}\n")
-    
+
     # Evaluate test results
     tests_passed, reason = evaluate_test_results(test_results)
     conversation_log.append(f"=== Test Evaluation ===\nResult: {'PASS' if tests_passed else 'FAIL'}\nReason: {reason}\n")
 
-    # Refinement iterations if tests fail
+    # Additional refinement if tests fail
     iteration_count = 0
-    while not tests_passed and iteration_count < 5:
+    while not tests_passed and iteration_count < 3:
         iteration_count += 1
         print(f"\n🚨 Testing failed! (Reason: {reason})")
-        print("Sending error logs to Critic for further refinement...")
-
+        
         critic_response = chat_with_agent(
             critic,
-            f"The Verilog design failed testing. Here is the error output:\n\n{test_results}\n\n"
-            f"Test evaluation determined failure for reason: {reason}\n\n"
-            "Analyze the error and suggest corrections to the design."
+            f"The Verilog design failed testing. Error details:\n\n{test_results}\n\n"
+            f"Test failure reason: {reason}\n\n"
+            "Analyze the test results and suggest specific corrections:"
+            "- Identify potential implementation issues"
+            "- Propose targeted fixes"
+            "- Ensure alignment with original specification"
         )
         conversation_log.append(f"=== Critic Post-Test Feedback (Iteration {iteration_count}) ===\n{critic_response}\n")
-        print("✅ Critic analyzed testing errors.\n")
 
-        print("\n🛠 Refining design...")
         coder_response = chat_with_agent(
             coder,
-            f"Here is the latest Verilog code:\n\n{coder_response}\n\n"
-            f"Here is the feedback from Critic:\n\n{critic_response}\n\n"
-            "Please refine the Verilog code based on the feedback. Make sure it aligns with the requirements in the original prompt."
+            f"Revise the Verilog implementation based on test failures:\n\n"
+            f"Original Specification:\n{user_request}\n\n"
+            f"Previous Implementation:\n{coder_response}\n\n"
+            f"Critic Feedback:\n{critic_response}\n\n"
+            f"Test Results:\n{test_results}\n\n"
+            "Directly address the test failures"
         )
-        conversation_log.append(f"=== Coder (Post-Test Version {iteration_count}) ===\n{coder_response}\n")
-        print(f"✅ Coder updated design (Iteration {iteration_count}).\n")
+        conversation_log.append(f"=== Revised Code (Post-Test {iteration_count}) ===\n{coder_response}\n")
 
-        # Save updated design file
+        # Save and test updated design
         with open("TopModule.v", "w", encoding="utf-8") as f:
             f.write(coder_response)
 
-        # Re-run the tests
-        print("\n=== Re-running SystemVerilog Tests ===")
         test_results = run_systemverilog_tests(test_filename, ref_filename)
         conversation_log.append(f"=== SystemVerilog Test Results (Iteration {iteration_count}) ===\n{test_results}\n")
         
-        # Re-evaluate test results
         tests_passed, reason = evaluate_test_results(test_results)
         conversation_log.append(f"=== Test Evaluation (Iteration {iteration_count}) ===\nResult: {'PASS' if tests_passed else 'FAIL'}\nReason: {reason}\n")
         
         if tests_passed:
             print(f"🎉 Tests PASSED! (Reason: {reason})")
-            print("🎉 Design finalized!\n")
             break
 
     return coder_response, conversation_log
@@ -288,11 +302,6 @@ if __name__ == "__main__":
     # # Path to the SystemVerilog test file and reference file
     # test_filename = "Prob001_zero_test.sv"
     # ref_filename = "Prob001_zero_ref.sv"
-    
-
-    # user_request = extract_prompt("Prob100_fsm3comb_prompt.txt")
-    # test_filename = "Prob100_fsm3comb_test.sv"
-    # ref_filename = "Prob100_fsm3comb_ref.sv"
 
     user_request_file = "Prob100_fsm3comb_prompt.txt"
     test_filename = "Prob100_fsm3comb_test.sv"
