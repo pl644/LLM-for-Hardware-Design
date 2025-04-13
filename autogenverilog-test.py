@@ -72,14 +72,16 @@ def extract_verilog_code(response_text):
         return response_text.strip()
     return "Error: No Verilog code detected"
 
-def chat_with_agent(agent, user_prompt):
+def chat_with_agent(agent, user_prompt, extract_verilog = True):
     """Interact with an agent and return the extracted Verilog code."""
     groupchat.messages.append({"role": "user", "name": user_proxy.name, "content": user_prompt})
     agent_text = agent.generate_reply(messages=groupchat.messages, user_input=user_prompt)
     if not isinstance(agent_text, str):
         agent_text = str(agent_text)
     groupchat.messages.append({"role": "assistant", "name": agent.name, "content": agent_text})
-    return extract_verilog_code(agent_text)
+    if extract_verilog:
+        return extract_verilog_code(agent_text)
+    return agent_text
 
 def run_systemverilog_tests(test_filename, ref_filename=None):
     """Run the SystemVerilog test using test and reference files."""
@@ -173,104 +175,78 @@ def orchestrate_design_flow(user_request, test_filename, ref_filename=None):
     )
     conversation_log.append(f"=== Initial Coder Implementation ===\n{coder_response}\n")
 
-    # Critic Review
-    print("\n🔍 Comprehensive Code Review...")
-    critic_response = chat_with_agent(
-        critic,
-        f"Thoroughly review this Verilog implementation against the original specification:\n\n{user_request}\n\n"
-        f"Code to review:\n\n{coder_response}\n\n"
-        "Review Criteria:"
-        "- Verify complete alignment with specification"
-        "- Check for any logical inconsistencies"
-        "- Provide specific, actionable feedback"
-    )
-    conversation_log.append(f"=== Critic Detailed Review ===\n{critic_response}\n")
-
-    # Refinement with Maximum 2 Iterations
-    for iteration in range(2):
-        # Check if further refinement is needed
-        if "No issues found" in critic_response or "Looks good" in critic_response:
-            break
-
-        print(f"\n🛠 Refining Verilog Code (Iteration {iteration+1})...")
-        coder_response = chat_with_agent(
-            coder,
-            f"Refine the Verilog code based on the following specification and critic feedback:\n\n"
-            f"Original Specification:\n{user_request}\n\n"
-            f"Previous Implementation:\n{coder_response}\n\n"
-            f"Critic Feedback:\n{critic_response}\n\n"
-            "Refinement Instructions:"
-            "- Address each point in the critic's feedback"
-            "- Make improvements if necessary"
-        )
-        conversation_log.append(f"=== Refined Code (Iteration {iteration+1}) ===\n{coder_response}\n")
-
-        # Re-validate against specification
-        critic_response = chat_with_agent(
-            critic,
-            f"Verify this Verilog implementation exactly matches the original specification:\n\n{user_request}\n\n"
-            f"Code to verify:\n\n{coder_response}\n\n"
-            "Verification Process:"
-            "- Perform a comprehensive review"
-            "- Check against each requirement in the original specification"
-            "- Identify any remaining discrepancies or potential improvements"
-        )
-        conversation_log.append(f"=== Verification Review (Iteration {iteration+1}) ===\n{critic_response}\n")
-
     # Test the implementation
     with open("TopModule.v", "w", encoding="utf-8") as f:
         f.write(coder_response)
 
     test_results = run_systemverilog_tests(test_filename, ref_filename)
+    print(f'TEST_RESULTS: {test_results}')
     conversation_log.append(f"=== SystemVerilog Test Results ===\n{test_results}\n")
 
     # Evaluate test results
     tests_passed, reason = evaluate_test_results(test_results)
     conversation_log.append(f"=== Test Evaluation ===\nResult: {'PASS' if tests_passed else 'FAIL'}\nReason: {reason}\n")
 
-    # Additional refinement if tests fail
-    iteration_count = 0
-    while not tests_passed and iteration_count < 3:
-        iteration_count += 1
-        print(f"\n🚨 Testing failed! (Reason: {reason})")
-        
-        critic_response = chat_with_agent(
+    try:
+        with open(test_filename, "r", encoding="utf-8") as f:
+            test_file_content = f.read()
+    except FileNotFoundError:
+        print(f"\n❌ Error: Test file '{test_filename}' not found.")
+        return None, conversation_log
+
+    for test_fix_iteration in range(5):
+        tests_passed, reason = evaluate_test_results(test_results)
+        if tests_passed:
+            break
+
+        print(f"\n🔄 Test failed. Refining code based on errors (Iteration {test_fix_iteration+1})...")
+
+        critic_analysis = chat_with_agent(
             critic,
-            f"The Verilog design failed testing. Error details:\n\n{test_results}\n\n"
-            f"Test failure reason: {reason}\n\n"
-            "Analyze the test results and suggest specific corrections:"
-            "- Identify potential implementation issues"
-            "- Propose targeted fixes"
-            "- Ensure alignment with original specification"
+            f"Analyze the test failures based on the following test file:\n{test_filename}\n\n"
+            f"Test Failure Details:\n{test_results}\n\n", extract_verilog =  False
+            # "Provide insights on:"
+            # "- Why the failures occurred based on the test expectations"
+            # "- Possible mistakes in the implementation"
+            # "- Suggestions on how to correct them", extract_verilog =  False
         )
-        conversation_log.append(f"=== Critic Post-Test Feedback (Iteration {iteration_count}) ===\n{critic_response}\n")
+        conversation_log.append(f"=== Critic Analysis (Iteration {test_fix_iteration+1}) ===\n{critic_analysis}\n")
 
         coder_response = chat_with_agent(
             coder,
-            f"Revise the Verilog implementation based on test failures:\n\n"
+            # f"Refine the Verilog code based on the following feedback from the critic:\n\n"
             f"Original Specification:\n{user_request}\n\n"
             f"Previous Implementation:\n{coder_response}\n\n"
-            f"Critic Feedback:\n{critic_response}\n\n"
-            f"Test Results:\n{test_results}\n\n"
-            "Directly address the test failures"
+            f"Test results: {test_results}"
+            f"Critic Analysis:\n{critic_analysis}\n\n"
+            # "Fix Instructions:"
+            # "- Address the specific issues found in the critic’s analysis"
+            # "- Ensure correctness without breaking other working parts"
+            # "- Maintain adherence to the original specification",
+            # f"Analyze test results and test cases in {test_file_content} and correct the code.", 
         )
-        conversation_log.append(f"=== Revised Code (Post-Test {iteration_count}) ===\n{coder_response}\n")
+        conversation_log.append(f"=== Refined Code (Test Fix {test_fix_iteration+1}) ===\n{coder_response}\n")
 
-        # Save and test updated design
+        # Save updated implementation
         with open("TopModule.v", "w", encoding="utf-8") as f:
             f.write(coder_response)
 
+        # Rerun tests
         test_results = run_systemverilog_tests(test_filename, ref_filename)
-        conversation_log.append(f"=== SystemVerilog Test Results (Iteration {iteration_count}) ===\n{test_results}\n")
-        
-        tests_passed, reason = evaluate_test_results(test_results)
-        conversation_log.append(f"=== Test Evaluation (Iteration {iteration_count}) ===\nResult: {'PASS' if tests_passed else 'FAIL'}\nReason: {reason}\n")
-        
-        if tests_passed:
-            print(f"🎉 Tests PASSED! (Reason: {reason})")
-            break
+        conversation_log.append(f"=== SystemVerilog Retest Results (Iteration {test_fix_iteration+1}) ===\n{test_results}\n")
+
+    # Final Evaluation
+    tests_passed, reason = evaluate_test_results(test_results)
+    conversation_log.append(f"=== Final Test Evaluation ===\nResult: {'PASS' if tests_passed else 'FAIL'}\nReason: {reason}\n")
+
+    if tests_passed:
+        print("\n🎉 Verilog module successfully implemented and verified!")
+    else:
+        print("\n❌ Design process ended with unresolved test failures. Further debugging required.")
 
     return coder_response, conversation_log
+
+
 
 def save_conversation_log(conversation_log):
     with open("design_flow_results.txt", "w", encoding="utf-8") as f:
@@ -303,9 +279,17 @@ if __name__ == "__main__":
     # test_filename = "Prob001_zero_test.sv"
     # ref_filename = "Prob001_zero_ref.sv"
 
-    user_request_file = "Prob100_fsm3comb_prompt.txt"
-    test_filename = "Prob100_fsm3comb_test.sv"
-    ref_filename = "Prob100_fsm3comb_ref.sv"
+    # user_request_file = "Prob100_fsm3comb_prompt.txt"
+    # test_filename = "Prob100_fsm3comb_test.sv"
+    # ref_filename = "Prob100_fsm3comb_ref.sv"
+
+    # user_request_file = "Prob156_review2015_fancytimer_prompt.txt"
+    # test_filename = "Prob156_review2015_fancytimer_test.sv"
+    # ref_filename = "Prob156_review2015_fancytimer_ref.sv"
+
+    user_request_file = "Prob122_kmap4_prompt.txt"
+    test_filename = "Prob122_kmap4_test.sv"
+    ref_filename = "Prob122_kmap4_ref.sv"
 
     # Check if the files exist
     files = [user_request_file, test_filename, ref_filename]
