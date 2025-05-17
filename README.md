@@ -20,7 +20,7 @@ This project explores the application of Large Language Models (LLMs) in automat
 
 ## Technologies Used
 
-- Python, PyMTL3
+- Python
 
 - Vivado HLS
 
