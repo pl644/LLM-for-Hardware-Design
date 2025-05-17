@@ -1,0 +1,23 @@
+2025-04-14 14:41:12,229 - INFO - Recovering files from base folder...
+2025-04-14 14:41:12,237 - INFO - Recovered digitrec_base.cpp → digitrec.cpp
+2025-04-14 14:41:12,241 - INFO - Recovered digitrec_base.h → digitrec.h
+2025-04-14 14:41:12,243 - INFO - Recovered digitrec_test_base.cpp → digitrec_test.cpp
+2025-04-14 14:41:12,251 - INFO - Recovered Makefile_base → Makefile
+2025-04-14 14:41:12,258 - INFO - Recovered README_base.md → README.md
+2025-04-14 14:41:12,265 - INFO - Recovered run_base.tcl → run.tcl
+2025-04-14 14:41:12,271 - INFO - Recovered training_data_base.h → training_data.h
+2025-04-14 14:41:12,277 - INFO - Recovered typedefs_base.h → typedefs.h
+2025-04-14 14:41:12,286 - INFO - Script folder recovered successfully
+2025-04-14 14:41:12,286 - INFO - Recovery complete.
+2025-04-14 14:41:12,287 - INFO - Creating checkpoint at step 0...
+2025-04-14 14:41:12,335 - INFO - Checkpoint 0 created successfully
+2025-04-14 14:41:12,335 - INFO - Conversation history cleared to prevent token limit issues
+2025-04-14 14:41:12,517 - ERROR - Error: Completions.create() got an unexpected keyword argument 'retry_timeout'
+2025-04-14 14:41:12,517 - WARNING - Failed attempt 1/3
+2025-04-14 14:41:42,548 - INFO - Creating checkpoint at step 0...
+2025-04-14 14:41:42,567 - INFO - Checkpoint 0 created successfully
+2025-04-14 14:41:42,567 - INFO - Conversation history cleared to prevent token limit issues
+2025-04-14 14:41:42,704 - ERROR - Error: Completions.create() got an unexpected keyword argument 'retry_timeout'
+2025-04-14 14:41:42,704 - WARNING - Failed attempt 2/3
+2025-04-14 14:41:49,265 - INFO - Process interrupted. Checking completion status...
+2025-04-14 14:41:49,267 - WARNING - Task was not completed before interruption.

@@ -1,0 +1,209 @@
+from autogen import AssistantAgent, UserProxyAgent, config_list_from_json
+import os
+import subprocess
+import time
+import signal
+import sys
+import threading
+
+# Define the configuration
+config_list = [
+    {
+        "model": "gpt-4o-mini",  # or another available model
+        'api_key': ""
+    }
+]
+
+# Function to check if task is completed
+def is_task_completed():
+    if os.path.exists("status.txt"):
+        with open("status.txt", "r") as f:
+            content = f.read().strip()
+            if content == "TASK_COMPLETED":
+                return True
+    return False
+
+# Function to handle termination
+def handle_termination(signum, frame):
+    print("\nTermination signal received. Checking if task was completed...")
+    if is_task_completed():
+        print("Task was completed successfully.")
+    else:
+        print("Task was not completed.")
+    sys.exit(0)
+
+# Register the signal handler
+signal.signal(signal.SIGINT, handle_termination)
+signal.signal(signal.SIGTERM, handle_termination)
+
+# Create the CORDIC expert agent
+cordic_expert = AssistantAgent(
+    name="CORDIC_Expert",
+    system_message="""You are an expert in digital hardware design, HLS tools, and the CORDIC algorithm.
+    You will help implement and optimize a CORDIC core for calculating sine and cosine values.
+    Please be very thorough in your analysis and provide concrete implementation suggestions.
+    When providing code, always use bash commands to write to files, specifically:
+    - For small changes: use echo commands with >> to append or > to overwrite
+    - For larger files: use cat << 'EOF' > filename ... EOF
+    
+    You must create a proper implementation of the CORDIC algorithm for cordic.cpp.
+    When updating cordic.cpp, always use cat to write the ENTIRE implementation file, not just parts of it.
+    
+    If you believe the implementation is successful and the project is complete, conclude with:
+    ```bash
+    echo "TASK_COMPLETED" > status.txt
+    ```
+    
+    Judge completion based on:
+    1. Successful synthesis without major errors
+    2. Reasonable error rates in the test outputs
+    3. Completion of all necessary implementation steps
+    """,
+    llm_config={"config_list": config_list}
+)
+
+# Create the lab environment agent with a more structured approach
+lab_environment = UserProxyAgent(
+    name="Lab_Environment",
+    human_input_mode="NEVER",
+    system_message="""You are a lab environment agent that can execute code and analyze results.
+    After each step, you should proceed to the next logical step in the CORDIC implementation without waiting for additional input.
+    Follow a systematic approach to complete the entire project.
+    You can only execute bash commands, not C++ or Makefile directly.
+    
+    You should thoroughly evaluate the results after each implementation attempt. If synthesis reports are generated
+    and error rates are reasonable, consider if the implementation meets all requirements.
+    
+    When given a CORDIC implementation by the expert, always execute the suggested bash commands to write it to cordic.cpp
+    and then run make all to test it.
+    
+    If the implementation is successful, run:
+    ```bash
+    echo "TASK_COMPLETED" > status.txt
+    ```
+    """,
+    code_execution_config={"work_dir": ".", "use_docker": False}
+)
+
+# Define a more comprehensive workflow
+def cordic_lab_workflow():
+    # First, make sure to remove any existing status.txt file
+    if os.path.exists("status.txt"):
+        os.remove("status.txt")
+        print("Removed existing status.txt file")
+
+    # Reset environment
+    print("Resetting environment...")
+    subprocess.run(["cp", "cordicbase.cpp", "cordic.cpp"])
+    subprocess.run(["make", "clean"])
+    
+    # Prepare project files for analysis
+    project_files = {}
+    
+    # Read README.md
+    try:
+        with open("README.md", "r") as f:
+            project_files["README.md"] = f.read()
+    except:
+        project_files["README.md"] = "File not found"
+    
+    # Read cordic.h
+    try:
+        with open("cordic.h", "r") as f:
+            project_files["cordic.h"] = f.read()
+    except:
+        project_files["cordic.h"] = "File not found"
+    
+    # Read cordic.cpp (base file)
+    try:
+        with open("cordic.cpp", "r") as f:
+            project_files["cordic.cpp"] = f.read()
+    except:
+        project_files["cordic.cpp"] = "File not found"
+    
+    # Read cordic_test.cpp
+    try:
+        with open("cordic_test.cpp", "r") as f:
+            project_files["cordic_test.cpp"] = f.read()
+    except:
+        project_files["cordic_test.cpp"] = "File not found"
+    
+    def monitor_completion():
+        while True:
+            if is_task_completed():
+                print("\nTask completion detected! Terminating process...")
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
+            time.sleep(5)
+    
+    # Start the monitoring thread
+    monitor_thread = threading.Thread(target=monitor_completion)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    # Start the initial conversation
+    print("Starting agent conversation...")
+    
+    # First, run the ls command to show directory contents
+    result = subprocess.run(["ls", "-la"], capture_output=True, text=True)
+    
+    # Create initial message with file contents
+    initial_message = f"""Let's systematically complete this CORDIC implementation project.
+
+The directory contains the following files:
+{result.stdout}
+Copy
+Here's the README.md:
+{project_files["README.md"]}
+Copy
+Here's the cordic.h header file:
+{project_files["cordic.h"]}
+Copy
+Here's the initial cordic.cpp file:
+{project_files["cordic.cpp"]}
+Copy
+Here's the cordic_test.cpp file:
+{project_files["cordic_test.cpp"]}
+Copy
+Now, please implement the CORDIC algorithm in cordic.cpp. Create a proper implementation that follows all the requirements in the header file.
+
+After implementing, we'll run 'make all' to test it. Once the implementation is successful, signal completion by writing "TASK_COMPLETED" to status.txt.
+
+Let's start with the implementation of cordic.cpp:
+"""
+    
+    lab_environment.initiate_chat(
+        cordic_expert,
+        message=initial_message
+    )
+
+if __name__ == "__main__":
+    # Maximum runtime
+    max_runtime = 3600  # 1 hour
+    
+    # Set timer for maximum runtime
+    def timeout_handler():
+        print(f"\nMaximum runtime of {max_runtime} seconds reached. Terminating...")
+        os.kill(os.getpid(), signal.SIGTERM)
+    
+    timer = threading.Timer(max_runtime, timeout_handler)
+    timer.daemon = True
+    timer.start()
+    
+    try:
+        cordic_lab_workflow()
+        
+        # Wait for completion or timeout
+        print("Workflow initiated. Waiting for completion...")
+        while not is_task_completed():
+            time.sleep(1)
+            
+        print("CORDIC implementation task has completed successfully.")
+    except KeyboardInterrupt:
+        print("\nProcess interrupted by user. Checking if task was completed...")
+        if is_task_completed():
+            print("Task was completed successfully.")
+        else:
+            print("Task was not completed.")
+    finally:
+        timer.cancel()
