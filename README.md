@@ -1,9 +1,5 @@
 # LLM-for-Hardware-Design
 
-<img src="https://img.shields.io/badge/M.Eng_Project-Cornell-B31B1B" alt="Cornell M.Eng Project Badge">
-<img src="https://img.shields.io/badge/Hardware-RTL_Design-blue" alt="Hardware Design">
-<img src="https://img.shields.io/badge/AI-LLM_Applications-green" alt="LLM Applications">
-
 This project explores the application of Large Language Models (LLMs) in automating and enhancing digital hardware design workflows. It integrates terminal-based agent orchestration, High-Level Synthesis (HLS) design automation, and Verilog RTL generation.
 
 ## Directory Structure
@@ -23,11 +19,7 @@ This project explores the application of Large Language Models (LLMs) in automat
 - Python
 - Vivado HLS
 - Verilog HDL
-- GitHub Copilot, OpenAI API
-
-## Background
-
-This repository was developed as part of a Master of Engineering (M.Eng) final project focused on applying language models to hardware design automation.
+- OpenAI API
 
 ## Related Work
 
